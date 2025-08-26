@@ -3,7 +3,7 @@ Postfix Policy for filtering emails/servers by GeoIP
 
 # ---------------------------------------------------------------------------
 # Install instructions for policyd-geoip2 Postfix policy to filter by country code.
-# By Malac utilising some code from policyd-spf filter program.
+# By Malac inspired by and utilising some code from policyd-spf filter program.
 # Version 2.10 August 2025
 # This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
