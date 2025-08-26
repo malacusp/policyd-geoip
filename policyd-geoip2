@@ -1,0 +1,872 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+#  Check GeoIP country_codes and provide recommended action back to Postfix.
+#
+#  policyd-geoip2
+#  By Malac <malacusp@gmail.com>
+'''
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License version 3 as published 
+    by the Free Software Foundation.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License along
+    with this program; if not, write to the Free Software Foundation, Inc.,
+    51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.'''
+
+__version__ = "2.10: Mon, 25 Aug 2025 12:00:00 +0000"
+
+import syslog, sys, os, string
+#import geoip2.database
+import maxminddb
+import re
+from urllib.parse import quote
+import time, datetime
+import pymysql as MySQLdb
+
+# Stuff for DB access and timestamps
+#    record[0]   |  record[1] | record[2] | record[3] |   record[4]   |  record[5]   |  record[6]   | record[7] | record[8] |
+# Database Structure is :
+#    serverid    | servername | serverip  | attempts  | first_attempt | last_attempt | country_code |  reason   |   sender  |
+# AUTO_INCREMENT |  TEXT(255) |  TEXT(16) | INT(255)  |   TEXT(255)   |   TEXT(255)  |   TEXT(4)    | TEXT(255) | TEXT(255) |
+
+# START OF DATABASE MAINTENANCE FUNCTIONS
+valid_fields = "id,name,ip,total,first,last,code,reason,sender"
+def listservers( fields ):
+	try:
+		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+		cursor = db.cursor()
+		cursor.execute("SELECT * FROM `servers`")
+		records = cursor.fetchall()
+		cursor.close()
+		fields_to_print = ""
+		if "ALL" in fields:
+			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
+		if "ID" in fields:
+			fields_to_print+=" record[0],"
+		if "NAME" in fields:
+			fields_to_print+=" record[1],"
+		if "IP" in fields:
+			fields_to_print+=" record[2],"
+		if "TOTAL" in fields:
+			fields_to_print+=" record[3],"
+		if "FIRST" in fields:
+			fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'),"
+		if "LAST" in fields:
+			fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'),"
+		if "CODE" in fields:
+			fields_to_print+=" record[6],"
+		if "REASON" in fields:
+			fields_to_print+=" record[7],"
+		if "SENDER" in fields:
+			fields_to_print+=" record[8],"
+
+		if len(records) > 0:
+			print ("GeoIP Policy Check Listing Records")
+		else:
+			print ("GeoIP Policy Check NO RECORDS to List")
+		if fields_to_print != "":
+			for record in records:
+				print ( eval( fields_to_print.rstrip(',') ) )
+		else:
+			print ( "INVALID FIELD NAME. Valid fields are %s" % (valid_fields) )
+
+	except Exception as exc :
+		print ('ERROR Listing the database. %s' % (exc))
+		pass
+		sys.exit()
+	return
+
+def clearservers( server="ALL", no_ask=False ):
+	retval = False
+	try:
+		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+		cursor = db.cursor()
+
+		if server == "ALL":
+			print ("Clearing all entries in servers database")
+			if no_ask:
+				result = 'y'
+			else:
+				result = 'b'
+				while (result.lower() != 'y' and result.lower() != 'n'):
+					result=input("Are you sure ? [y/n] : ")
+			if result.lower() == 'y':
+				cursor.execute("TRUNCATE TABLE servers")
+				print ("Cleared")
+			else:
+				print ("Operation Cancelled")
+		else:
+			sql = "SELECT * FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
+			num_rows = cursor.execute( sql )
+			records = cursor.fetchall()
+			if num_rows > 0:
+				fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
+				print ("GeoIP Policy Check deleting the following records from database:")
+				for record in records:
+					print ( eval(fields_to_print) )
+				result = 'b'
+				while (result.lower() != 'y' and result.lower() != 'n'):
+					result=input("Are you sure ? [y/n] : ")
+				if result.lower() == 'y':
+					sql = "DELETE FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
+					num_rows = cursor.execute( sql )
+					print ("Cleared %s" % num_rows)
+				else:
+					print ("Operation Cancelled")
+
+			else:
+				print ("GeoIP Policy Check NO RECORDS found to Clear")
+
+		cursor.close()
+
+	except Exception as exc :
+		retval=False
+		print ('ERROR Clearing the database. %s' % (exc))
+		pass
+		sys.exit()
+
+	return ( retval )
+
+def deleteserver( server="0", no_ask=False ):
+	retval = False
+	try:
+		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+		cursor = db.cursor()
+
+		if server != "0":
+			print ("Delete server from servers database. This is irreversible.")
+			if no_ask:
+				result = 'y'
+			else:
+				result = 'b'
+				while (result.lower() != 'y' and result.lower() != 'n'):
+					result=input("Are you sure ? [y/n] : ")
+			if result.lower() == 'y':
+				sql = "SELECT * from servers WHERE `serverid`=%s;" % (server)
+				cursor.execute( sql )
+				records = cursor.fetchall()
+				if len(records) > 0:
+					sql = "DELETE FROM `servers` WHERE `serverid`=%s;" % (server)
+					cursor.execute( sql )
+					print ("Deleted Entry %s" % server)
+				else:
+					print ("Not Deleted, serverid not found")
+			else:
+				print ("Operation Cancelled")
+
+		cursor.close()
+
+	except Exception as exc :
+		retval=False
+		print ('ERROR Clearing the database. %s' % (exc))
+		pass
+		sys.exit()
+
+	return ( retval )
+
+def clearoldentries(time_before="24H", no_ask=False):
+	try:
+		time_now = datetime.datetime.now() #fromtimestamp(time.time())
+		factor = parse_time( time_before )
+		if factor == None:
+			return
+		clear_before = time_now - factor
+		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+		cursor = db.cursor()
+		cursor.execute("SELECT * FROM `servers`")
+		records = cursor.fetchall()
+		to_delete = ""
+		first = True
+		for record in records:
+			if ( datetime.datetime.fromtimestamp(int(float(record[5]))) ) < clear_before:
+				# Build the SQL delete string if it is not the first one in the list add the ' OR `serverid` = ' as well.
+				if not first:
+					to_delete+=" OR `serverid` = "
+				first = False
+				to_delete += ( "%s" % str(record[0]) )
+		if len(to_delete) > 0:
+			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7],record[8]"
+			print ("GeoIP Policy Check deleting the following records from database:")
+			syslog.syslog ("GeoIP Policy Check deleting the following records from database:")
+			for record in records:
+				if str(record[0]) in to_delete:
+					print ( eval(fields_to_print) )
+			result = 'b'
+			if not no_ask:
+				while (result.lower() != 'y' and result.lower() != 'n'):
+					result=input("Are you sure ? [y/n] : ")
+			else:
+				result = 'y'
+			if result.lower() == 'y':
+				sql = "DELETE FROM `servers` WHERE `serverid` = '%s'" % (to_delete)
+				cursor.execute( sql )
+				print ("Cleared")
+				syslog.syslog("Cleared")
+			else:
+				print ("Operation Cancelled")
+		else:
+			print ("NO RECORDS to Clear")
+		cursor.close()
+	except Exception as exc :
+		print ('ERROR Clearing the database. %s' % (exc))
+		pass
+		sys.exit()
+
+	return
+
+# For calculating days and times for parse_time() function
+delta_regex = re.compile(r'((?P<days>\d+?)D)?((?P<hours>\d+?)H)?((?P<minutes>\d+?)M)?((?P<seconds>\d+?)S)?')
+
+def parse_time(time_str):
+	parts = delta_regex.match(time_str.upper())
+	if parts.group() == "":
+		return None
+	parts = parts.groupdict()
+	time_params = {}
+	for (name, param) in parts.items():
+		if param:
+			time_params[name] = int(param)
+	return datetime.timedelta(**time_params)
+
+# END OF DATABASE MAINTENANCE FUNCTIONS
+
+# Function to Query MYSQL 'servers' Database
+def check_database( server, serverip, countrycode, reason, sender, log_reject_to_db ):
+	retval = False
+	time_now = datetime.datetime.now()
+	# Do we want to store to the database?
+	if log_reject_to_db:
+		try:
+			db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+			cursor = db.cursor()
+			sql = "SELECT * FROM `servers` WHERE `serverip` = '%s'" % (serverip)
+			num_rows = cursor.execute( sql )
+			record = cursor.fetchone()
+			# If there is a record
+			if num_rows > 0:
+				if passed == "-D":
+					syslog.syslog( "DB ENTRY %s" % ( " | ".join(map(str, record)) ) )
+				recorded_time = datetime.datetime.fromtimestamp(int(float(record[4])))
+				attempts = int(record[3])
+				if recorded_time + datetime.timedelta(minutes=10) < time_now and attempts > 4:
+					retval = True
+				else:
+					retval = False
+				sql = "UPDATE `servers` SET `servername`='%s', `serverip`='%s',  `attempts`=%s, `first_attempt`='%s', `last_attempt`='%s', `country_code`='%s', `reason`='%s', `sender`='%s'  WHERE `serverip` = '%s'" % ( record[1], record[2], attempts+1, record[4], time_now.timestamp(), record[6], record[7], record[8], record[2] )
+				cursor.execute( sql )
+				if passed == "-D":
+					syslog.syslog( 'Updating database for : %s | IP : %s' % (server, serverip) )
+			else:
+				retval = True
+				sql = "INSERT INTO `servers` (`servername`,`serverip`,`attempts`,`first_attempt`,`last_attempt`,`country_code`,`reason`, `sender`) VALUES ( '%s', '%s', '%s', '%s', '%s', '%s', '%s','%s' )" % ( server, serverip, 1, time_now.timestamp(), time_now.timestamp(), countrycode, reason, sender )
+				cursor.execute( sql )
+				if passed == "-D":
+					syslog.syslog( 'Adding database entry for : %s | IP : %s' % (server, serverip) )
+			cursor.close()
+		except Exception as exc :
+			syslog.syslog('ERROR Accessing the database. %s' % (exc))
+			print ('ERROR Accessing the database. %s' % (exc))
+			pass
+	# Do we want to store to external file?
+	if log_reject_to_file:
+		try:
+			file = open(external_reject_file,'a')
+			logstring = "%s,\t%s,\t%s,\t%s,\t%s,\t%s\n" % (server, serverip, time_now, countrycode, reason, sender)
+			file.write(logstring)
+			file.close()
+		except Exception as exc :
+			syslog.syslog('ERROR Accessing the reject file. %s' % (exc))
+			print ('ERROR Accessing the reject file. %s' % (exc))
+	return retval
+
+# Function to Query IP against GeoIP database NOT our database.
+def query(data, instance_dict, path_to_data):
+	IP = data.get('client_address')
+	if IP == None:
+		syslog.syslog( 'geoip/query: No client address, exiting' )
+		return(( None, instance_dict ))
+	instance = data.get('instance')
+	# The following if is only needed for testing.
+	# Postfix will always provide instance.
+	if not instance:
+		import random
+		instance = str(int(random.random()*100000))
+	# This is to prevent multiple headers being prepended
+	# for multi-recipient mail.
+	if instance in instance_dict:
+		found_instance = instance_dict[instance]
+	else:
+		found_instance = []
+	# If this is not the first recipient for the message, we need to know if
+	# there is a previous prepend to make sure we don't prepend more than once.
+	if found_instance:
+		if found_instance[6] != 'prepend':
+			last_action = found_instance[3]
+		else:
+			last_action = found_instance[6]
+	else:
+		# This is the actual query. The "reader" and old method "gi" are defined later in the code.
+		try:
+			#retval=gi.country_code_by_addr(IP)
+			retval = reader.get(IP)
+			syslog.syslog( 'Country Code : %s' % retval['country']['iso_code'] )
+			#print(retval['country']['iso_code'])
+			return(( retval['country']['iso_code'], instance_dict ))
+		except Exception as exc :
+			syslog.syslog( 'ERROR checking for Country Code. %s' % (exc) )
+			pass
+			sys.exit()
+
+	return(( 'None', instance_dict ))
+
+# Function to check for exceptions to the REJECTLIST so they can be passed even if their country is unacceptable
+def check_bad_exceptions(data, saved_result, bad_exceptions, IP, revlookup):
+	if passed == "-D":
+		syslog.syslog( 'exceptions_to_rejectlist: %s' % (bad_exceptions) )
+		syslog.syslog( 'IP: %s' % (IP) )
+		syslog.syslog( 'Reverse DNS Lookup: %s' % (revlookup) )
+	# If "GOODEXCEPT" or "SENDERBYPASS" or "RECIPIENTBYPASS" already then just return that
+	if (saved_result == "GOODEXCEPT" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
+		return ( saved_result )
+	# Check each entry in bad_exceptions against the IP then the revlookup
+	for server in bad_exceptions:
+		if (server in IP) and (server != ''):
+			return ( "BADEXCEPT" )
+		if (server in revlookup.upper()) and (server != ''):
+			return ( "BADEXCEPT" )
+	# Check each entry in bad_exceptions against the sender email too
+	sender_address = data.get('sender')
+	for address in bad_exceptions:
+		if (address in sender_address.upper()) and (server != ''):
+			return ( "BADEXCEPT" )
+	return ( saved_result )
+
+# Function to check for exceptions to the ACCEPTLIST so they can be rejected even if their country is acceptable
+def check_good_exceptions(data, saved_result, good_exceptions, IP, revlookup):
+	if passed == "-D":
+		syslog.syslog( 'exceptions_to_acceptlist: %s' % (good_exceptions) )
+		syslog.syslog( 'IP: %s' % (IP) )
+		syslog.syslog( 'Reverse DNS Lookup: %s' % (revlookup) )
+	# If "BADEXCEPT" or "GOODEXCEPT" or "SENDERBYPASS" already then just return that
+	if (saved_result == "BADEXCEPT" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
+		return ( saved_result )
+	# Check each entry in good_exceptions against the IP then the revlookup
+	for server in good_exceptions:
+		if (server in IP) and (server != ''):
+			return ( "GOODEXCEPT" )
+		if (server in revlookup.upper()) and (server != ''):
+			return ( "GOODEXCEPT" )
+	# Check each entry in good_exceptions against the sender email too
+	sender_address = data.get('sender')
+	for address in good_exceptions:
+		if (address in sender_address.upper()) and (server != ''):
+			return ( "GOODEXCEPT" )
+	return ( saved_result )
+
+# Function to check for sender_bypasses so checking is bypassed
+def check_sender_bypasses(data, saved_result, sender_bypasses, sender_address):
+	if passed == "-D":
+		syslog.syslog( 'sender_bypasses: %s' % (sender_bypasses) )
+		syslog.syslog( 'Sender Address: %s' % (sender_address) )
+	# If "BADEXCEPT" or "GOODEXCEPT" or "RECIPIENTBYPASS" already then just return that
+	if (saved_result == "BADEXCEPT" or saved_result == "GOODEXCEPT" or saved_result == "RECIPIENTBYPASS"):
+		return ( saved_result )
+	# Check each entry in sender_bypasses against the IP then the revlookup
+	for address in sender_bypasses:
+		if (address in sender_address.upper()) and (address != ''):
+			return ( "SENDERBYPASS" )
+	return ( saved_result )
+
+# Function to check for recipient exceptions so checking is bypassed
+def check_recipient_bypasses(data, saved_result, recipient_bypasses, recipient_address):
+	if passed == "-D":
+		syslog.syslog( 'recipient_bypasses: %s' % (recipient_bypasses) )
+		syslog.syslog( 'Recipient Address: %s' % (recipient_address) )
+	# If "BADEXCEPT" or "GOODEXCEPT" or "SENDERBYPASS" already then just return that
+	if (saved_result == "BADEXCEPT" or saved_result == "GOODEXCEPT" or saved_result == "SENDERBYPASS"):
+		return ( saved_result )
+	# Check each entry in sender_bypasses against the IP then the revlookup
+	for address in recipient_bypasses:
+		if (address in recipient_address.upper()) and (address != ''):
+			return ( "RECIPIENTBYPASS" )
+	return ( saved_result )
+
+# Function to create string from multiline conf file values when option is an external filename
+def unsplit_config_file_lines( filename ):
+	ret_lines = []
+	ret_string = ""
+	try:
+		cf_file = open( filename, 'r' )
+		cf = cf_file.readlines()
+		cf_file.close()
+		for line in cf:
+			value = whitespace.sub('', line)
+			value = value.upper()
+			ret_lines.append(value)
+		ret_string =  ",".join(ret_lines)
+		return ( ret_string )
+	except:
+		syslog.syslog( 'ERROR reading ' + filename + ' called from policyd-geoip.conf' )
+		pass
+		sys.exit()
+	return ("")
+
+################
+# MAIN PROGRAM #
+################
+
+#debug stuff
+passed = ""
+debugmode = ""
+
+# Load and Read config file
+try:
+	conf_file = open( '/etc/postfix-policyd-geoip/policyd-geoip2.conf', 'r')
+except Exception as exc:
+	syslog.syslog( 'ERROR opening policyd-geoip2.conf : %s' % (exc) )
+	print ( 'ERROR opening policyd-geoip2.conf : %s\nIt must be in /etc/postfix-policyd-geoip' % (exc) )
+	sys.exit()
+config = conf_file.readlines()
+conf_file.close()
+
+# Setup some variables and defaults
+whitespace = re.compile(r'\s+')
+path_to_data = "/usr/share/GeoIP/GeoIP.dat"
+rejectlist=[]
+acceptlist=[]
+bad_exceptions=[]
+good_exceptions=[]
+sender_bypasses=[]
+recipient_bypasses=[]
+permit_acceptlist_only=False
+soft_bounce=False
+test_mode=False
+log_reject_to_db=False
+auto_clear_db=False
+auto_clear_time='7d'
+reject_code="450"
+PGO_message=""
+dbname="policyd-geoip"
+dbuser="policyd-geoip"
+dbhost="localhost"
+dbpassword="password"
+config_path="/etc/postfix-policyd-geoip/"
+log_reject_to_file=False
+external_reject_file="/var/log/policd-geoip2.log"
+test=""
+
+# Now Read through the config array and assign values
+for i in range( len( config ) ):
+	value = whitespace.sub('',config[i])
+	if value.startswith('#'):
+		continue
+	unaltered_string = value # needs to be saved as normal case as other values are uppercased later.
+	unaltered_value = unaltered_string.split('=')
+	value = value.upper()
+	value = value.split('=')
+	if value[0][0:11] == "CONFIG_PATH":
+		dname = unaltered_value[1]
+		if os.path.exists(dname):
+			if not dname.endswith('/'):
+				config_path=dname+'/'
+	if value[0][0:12] == "PATH_TO_DATA":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		try:
+			path_to_data = codes
+		except:
+			if passed == "-D":
+				syslog.syslog( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
+			path_to_data = "/usr/share/GeoIP/GeoLite2-Country.mmdb"
+			pass
+	elif value[0][0:10] == "REJECTLIST":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		rejectlist = codes.split(',')
+	elif value[0][0:10] == "ACCEPTLIST":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		acceptlist = codes.split(',')
+	elif value[0][0:24] == "EXCEPTIONS_TO_REJECTLIST":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		codes = codes.strip('*')
+		bad_exceptions = codes.split(',')
+	elif value[0][0:24] == "EXCEPTIONS_TO_ACCEPTLIST":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		codes = codes.strip('*')
+		good_exceptions = codes.split(',')
+	elif value[0][0:17] == "SENDER_BYPASSES":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		codes = codes.strip('*')
+		sender_bypasses = codes.split(',')
+	elif value[0][0:20] == "RECIPIENT_BYPASSES":
+		if value[1][0:5] == "FILE:":
+			line = unaltered_value[1].split(':')
+			fname = line[1]
+			if os.path.exists(config_path+fname):
+				test = unsplit_config_file_lines(config_path+fname)
+				if test != "":
+					value[1] = test
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		codes = codes.strip('*')
+		recipient_bypasses = codes.split(',')
+	elif value[0][0:22] == "PERMIT_ACCEPTLIST_ONLY":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			permit_acceptlist_only = True
+		else:
+			permit_acceptlist_only = False
+	elif value[0][0:11] == "SOFT_BOUNCE":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			soft_bounce = True
+		else:
+			soft_bounce = False
+	elif value[0][0:9] == "TEST_MODE":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			test_mode = True
+		else:
+			test_mode = False
+	elif value[0][0:18] == "LOG_REJECT_TO_FILE":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			log_reject_to_file = True
+		else:
+			log_reject_to_file = False
+	elif value[0][0:20] == "EXTERNAL_REJECT_FILE":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		try:
+			external_reject_file = codes
+		except:
+			syslog.syslog( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
+			external_reject_file = "/var/log/policyd-geoip2.log"
+			pass
+	elif value[0][0:16] == "LOG_REJECT_TO_DB":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			log_reject_to_db = True
+		else:
+			log_reject_to_db = False
+	elif value[0][0:13] == "AUTO_CLEAR_DB":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		if codes == "TRUE" or codes == "1" or codes == "ON":
+			auto_clear_db = True
+		else:
+			auto_clear_db = False
+	elif value[0][0:15] == "AUTO_CLEAR_TIME":
+		codes = value[1].strip('\n')
+		codes = codes.strip('\r')
+		auto_clear_time = codes
+	elif value[0][0:6] == "DBNAME":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		dbname = quote(codes)
+	elif value[0][0:6] == "DBUSER":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		dbuser = quote(codes)
+	elif value[0][0:6] == "DBHOST":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		dbhost = quote(codes)
+	elif value[0][0:10] == "DBPASSWORD":
+		codes = unaltered_value[1].strip('\n')
+		codes = codes.strip('\r')
+		dbpassword = quote(codes)
+
+# CHECK COMMAND LINE SWITCHES AND OPTIONS
+if len(sys.argv) >= 2:
+	passed = sys.argv[1]
+	passed = passed.upper()
+
+	# DEBUG MODE SWITCH
+	if passed == "-D":
+		debugmode = "in Debug Mode"
+
+	# DISPLAY HELP TEXT
+	if passed == "H" or passed == "-H" or passed == "--HELP" or passed == "-HELP" or passed == "?" or passed == "-?" or passed == "HELP":
+		print ("\nUSAGE:\tpolicyd-geoip2 [switch] [option]\n")
+		print ("SWITCHES:\t\tOPTIONS:")
+		print ("[command line only]")
+		print ("-l, --list, list\tid,name,ip,total,first,last,code,reason,sender (comma-separated list of fields required, NO SPACES)")
+		print ("-c, --clear, clear\tip address or server name or reason (can all be partial)")
+		print ("-o, --old, old\t\tA number plus d for days, h for hours, m for minutes, s for seconds.(e.g. 24h or 2d or 5m or 4d12h10m30s, etc.)")
+		print ("-r, --remove, remove\tserverid to remove from database (required) check with \"policyd-geoip2 -l\" switch (number is first column)")
+		print ("-h, --help, help, -?\tThis help info")
+		print ("[daemon mode or cli]")
+		print ("-d (only way to call)\tDebug mode\n")
+		print ("SWITCH OPERATIONS:")
+		print ("--list  \tPrint out the contents of the database.")
+		print ("--clear \tClears all the database records or some, depending on options selected")
+		print ("--old   \tRemoves entries whose last contact attempt was this long ago or more.")
+		print ("--remove\tRemove single entry from database, ID IS REQUIRED.")
+		print ("If no options are provided for --list, all fields are listed")
+		print ("If no options are provided for --clear, ALL data is removed from the database.")
+		print ("If no options are provided for --old, the default is 24h for 24 Hours")
+		# LEAVE PROGRAM AFTER OPERATION
+		sys.exit()
+
+	# These next switches are for database maintenance
+
+	# LIST ENTRIES IN DATABASE
+	if passed == "L" or passed == "-L" or passed == "--LIST"or passed == "-LIST" or passed == "LIST":
+		fieldlist="ALL"
+		if len(sys.argv) >= 3:
+			fieldlist = sys.argv[2]
+			fieldlist = fieldlist.upper()
+			fieldlist = fieldlist.split(',')
+		listservers(fieldlist)
+		# LEAVE PROGRAM AFTER OPERATION
+		sys.exit()
+
+	# CLEAR ALL ENTRIES IN DATABASE
+	if passed == "C" or passed == "-C" or passed == "--CLEAR" or passed == "-CLEAR" or passed == "CLEAR":
+		server = "ALL"
+		no_ask = False
+		if len(sys.argv) >= 3:
+			server = sys.argv[2]
+			if server == "all":
+				server = "ALL"
+			if len(sys.argv) >= 4:
+				if sys.argv[3] == "-Y" or sys.argv[3] == "-y":
+					no_ask = True
+		clearservers(server, no_ask)
+		# LEAVE PROGRAM AFTER OPERATION
+		sys.exit()
+
+	# DELETE ENTRIES IN DATABASE MORE THAN THIS OLD, -Y OPTION ASKS FOR CONFIRMATION
+	if passed == "O" or passed == "-O" or passed == "--OLD" or passed == "-OLD" or passed == "OLD":
+		how_old = "24H"
+		no_ask = False
+		if len(sys.argv) >= 3:
+			how_old = sys.argv[2]
+			if len(sys.argv) >= 4:
+				if sys.argv[3].upper() == '-Y':
+					no_ask = True
+		clearoldentries( str(how_old), no_ask)
+		# LEAVE PROGRAM AFTER OPERATION
+		sys.exit()
+
+	# DELETE SINGLE SERVER FROM DATABASE, -Y OPTION ASKS FOR CONFIRMATION
+	if passed == "R" or passed == "-R" or passed == "--REMOVE" or passed == "-REMOVE" or passed == "REMOVE":
+		servid = 0
+		no_ask = False
+		if len(sys.argv) >= 3:
+			servid = sys.argv[2]
+			if len(sys.argv) >= 4:
+				if sys.argv[3].upper() == '-Y':
+					no_ask = True
+		deleteserver( servid , no_ask)
+		# LEAVE PROGRAM AFTER OPERATION
+		sys.exit()
+
+# Load Mail Log for output messages
+syslog.openlog(os.path.basename(sys.argv[0]), syslog.LOG_PID, syslog.LOG_MAIL)
+syslog.syslog( 'Running GeoIP Policy Check %s' % (debugmode) )
+
+if (auto_clear_db):
+	clearoldentries(auto_clear_time, True)
+else:
+	syslog.syslog("autoclear disabled")
+
+# Set Reject Code '450' soft bounce temporarily unavailable, '550' permanently unavailable.
+if (soft_bounce):
+	reject_code = '450'
+else:
+	reject_code = '550'
+
+if permit_acceptlist_only:
+	PGO_message = "permit_acceptlist_only is TRUE"
+
+if passed == "-D":
+	syslog.syslog( 'reject_code set to: %s' % (reject_code) )
+	syslog.syslog( 'permit_acceptlist_only is: %s' % (permit_acceptlist_only) )
+	syslog.syslog( 'test_mode set to: %s' % (test_mode) )
+
+# Open the GeoIP database.
+try:
+	#gi = GeoIP.open(path_to_data, GeoIP.GEOIP_STANDARD)
+	reader = maxminddb.open_database(path_to_data)
+except Exception as exc :
+	syslog.syslog( 'ERROR opening GeoIP database : %s' % (exc) )
+	pass
+	sys.exit()
+
+instance_dict = {'0':'init',}
+instance_dict.clear()
+data = {}
+lineRx = re.compile(r'^\s*([^=\s]+)\s*=(.*)$')
+while 1:
+	# Python readline assumes ascii here, but sometimes it's not
+	lineraw = sys.stdin.buffer.readline()
+	line = lineraw.decode('UTF-8',errors='replace')
+	if not line: break
+	#line = string.rstrip(line)
+	line = line.rstrip()
+	if passed == "-D" :
+		syslog.syslog('Read line: "%s"' % line)
+	if not line :
+		try:
+			# Perform Check of IP
+			result, instance_dict = query(data, instance_dict, path_to_data)
+			if passed == "-D" :
+				syslog.syslog('RESULT : "%s"' % result)
+			# Save country_code for later use.
+			saved_result = result
+			IP = data.get('client_address')
+			sender_address = data.get('sender')
+			recipient_address = data.get('recipient')
+			revlookup = data.get('reverse_client_name')
+			syslog.syslog( 'E-Mail Sender: %s to Recipient: %s' % (sender_address, recipient_address) )
+			if passed == "-D":
+				syslog.syslog( 'Postfix Reverse Lookup of %s returned %s' % (IP, revlookup) )
+			# Check for Exceptions
+			result = check_good_exceptions(data, result, good_exceptions, IP, revlookup)
+			result = check_bad_exceptions(data, result, bad_exceptions, IP, revlookup)
+			result = check_sender_bypasses(data, result, sender_bypasses, sender_address )
+			result = check_recipient_bypasses(data, result, recipient_bypasses, recipient_address )
+			if passed == "-D":
+				syslog.syslog( 'Result of Checks: %s' % (result) )
+			# Check result - "action=dunno" is used instead of "action=ok" as this lets other checks happen.
+			if (result == "SENDERBYPASS"):
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in SENDER_BYPASSES %s' % (sender_address, PGO_message) )
+				else:
+					sys.stdout.write( 'action=dunno No Processing <%s> in SENDER_BYPASSES\n\n' % (sender_address) )
+					syslog.syslog( 'action=Pass - No Processing <%s> in SENDER_BYPASSES ' % (sender_address) )
+			elif (result == "RECIPIENTBYPASS"):
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in RECIPIENT_BYPASSES %s' % (recipient_address,PGO_message) )
+				else:
+					sys.stdout.write( 'action=dunno No Processing <%s> in RECIPIENT_BYPASSES\n\n' % (recipient_address) )
+					syslog.syslog( 'action=Pass - No Processing <%s> in RECIPIENT_BYPASSES ' % (recipient_address) )
+			elif (result == "BADEXCEPT"):
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s %s' % (IP,revlookup,saved_result,PGO_message) )
+				else:
+					sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
+					syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+			elif (result == "GOODEXCEPT"):
+				saved_reject_code = reject_code
+				if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db ):
+					reject_code = "554"
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
+				else:
+					sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+					syslog.syslog( 'action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
+				reject_code = saved_reject_code
+			elif (result in rejectlist):
+				saved_reject_code = reject_code
+				if check_database( revlookup, IP, saved_result, "REJECTLIST", sender_address, log_reject_to_db ):
+					reject_code = "554"
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
+				else:
+					sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+					syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s ' % (reject_code,IP,revlookup,saved_result) )
+				reject_code = saved_reject_code
+			elif (result in acceptlist):
+				if test_mode:
+					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s %s' % (IP,revlookup,result,PGO_message) )
+				else:
+					sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s\n\n' % (IP,revlookup,saved_result) )
+					syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s ' % (IP,revlookup,saved_result) )
+			else:
+				if( permit_acceptlist_only ):
+					saved_reject_code = reject_code
+					if check_database( revlookup, IP, saved_result, "ACCEPTLIST_ONLY NOT LISTED", sender_address, log_reject_to_db ):
+						reject_code = "554"
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
+					else:
+						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+						syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
+					reject_code = saved_reject_code
+				else:
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+					else:
+						sys.stdout.write( 'action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (IP,revlookup,saved_result) )
+						syslog.syslog( 'action=warn - Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+		except Exception as exc:
+			sys.stdout.write( 'action=defer_if_permit An error occured, %s failed with error %s\n\n' % (IP,str(exc)) )
+			syslog.syslog( 'An Error Occured, %s failed with error %s' % (IP, str(exc)) )
+			pass
+		sys.stdout.flush()
+		data = {}
+		continue
+
+	m = lineRx.match(line)
+	if not m: 
+		syslog.syslog( 'ERROR: Could not match line "%s"' % line )
+		continue
+
+	key = m.group(1)
+	value = m.group(2)
+	if key not in [ 'protocol_state', 'protocol_name', 'queue_id' ]:
+		value = value.lower()
+	data[key] = value
+
+# END PROGRAM
