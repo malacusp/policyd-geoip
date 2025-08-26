@@ -458,7 +458,7 @@ dbhost="localhost"
 dbpassword="password"
 config_path="/etc/postfix-policyd-geoip/"
 log_reject_to_file=False
-external_reject_file="/var/log/policd-geoip2.log"
+external_reject_file="/var/tmp/policd-geoip2.log"
 test=""
 
 # Now Read through the config array and assign values
@@ -483,6 +483,7 @@ for i in range( len( config ) ):
 		except:
 			if passed == "-D":
 				syslog.syslog( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
+			print ( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
 			path_to_data = "/usr/share/GeoIP/GeoLite2-Country.mmdb"
 			pass
 	elif value[0][0:10] == "REJECTLIST":
@@ -590,7 +591,8 @@ for i in range( len( config ) ):
 			external_reject_file = codes
 		except:
 			syslog.syslog( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
-			external_reject_file = "/var/log/policyd-geoip2.log"
+			print ( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
+			external_reject_file = "/var/tmp/policyd-geoip2.log"
 			pass
 	elif value[0][0:16] == "LOG_REJECT_TO_DB":
 		codes = value[1].strip('\n')
