@@ -30,7 +30,7 @@ accept_list_exceptions.conf
 COPYING (this file if you wish)
 policyd-geoip2.conf
 policyd-geoip2.sql
-README (this file if you wish)
+README.md (this file if you wish)
 recipient_bypasses.conf
 reject_list.conf
 reject_list_exceptions.conf
@@ -44,10 +44,10 @@ The file /etc/postfix-policyd-geoip/policyd-geoip2.conf contains explanations of
 [Database]
 If you wish you can set up a MySQL database to log rejected servers.
 The file /etc/postfix-policyd-geoip/policyd-geoip2.sql contains structure data which can be imported via phpmyadmin or mysql cli interface.
-You will then need to create a user to accessvthis database from policyd-geoip2.
+You will then need to create a user to access this database from policyd-geoip2.
 The default name for host is: localhost
 The default name for database is: policyd-geoip
-The default name for user is: policyd-geoip (obviously don't connect as root use a dedicated user).
+The default name for user is: policyd-geoip (obviously don't connect as root use a dedicated user of your choice).
 YOU MUST create the user password yourself in phpmyadmin or mysql cli and give them access permissions to the database.
 
 Set log_reject_to_db to "true" (no quotes) in /etc/postfix-policy-geoip/policyd-geoip2.conf to log entries.
