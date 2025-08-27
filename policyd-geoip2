@@ -190,8 +190,7 @@ def clearoldentries(time_before="24H", no_ask=False):
 					to_delete += ( "`serverid` = '%s'" % str(record[0]) )
 					first = False
 				else:
-					if record[0] != '' and record[0] != ' ':
-						to_delete += ( " OR `serverid` = '%s'" % str(record[0]) )
+					to_delete += ( " OR `serverid` = '%s'" % str(record[0]) )
 		if len(to_delete) > 0:
 			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7],record[8]"
 			print ("GeoIP Policy Check deleting the following records from database:")
