@@ -185,11 +185,13 @@ def clearoldentries(time_before="24H", no_ask=False):
 		first = True
 		for record in records:
 			if ( datetime.datetime.fromtimestamp(int(float(record[5]))) ) < clear_before:
-				# Build the SQL delete string if it is not the first one in the list add the ' OR `serverid` = ' as well.
-				if not first:
-					to_delete+=" OR `serverid` = "
-				first = False
-				to_delete += ( "%s" % str(record[0]) )
+				# Build the SQL delete string if it is the first one in the list don't add the ' OR '.
+				if first:
+					to_delete += ( "`serverid` = '%s'" % str(record[0]) )
+					first = False
+				else:
+					if record[0] != '' and record[0] != ' ':
+						to_delete += ( " OR `serverid` = '%s'" % str(record[0]) )
 		if len(to_delete) > 0:
 			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7],record[8]"
 			print ("GeoIP Policy Check deleting the following records from database:")
@@ -204,7 +206,7 @@ def clearoldentries(time_before="24H", no_ask=False):
 			else:
 				result = 'y'
 			if result.lower() == 'y':
-				sql = "DELETE FROM `servers` WHERE `serverid` = '%s'" % (to_delete)
+				sql = "DELETE FROM `servers` WHERE %s" % (to_delete)
 				cursor.execute( sql )
 				print ("Cleared")
 				syslog.syslog("Cleared")
@@ -237,7 +239,7 @@ def parse_time(time_str):
 # END OF DATABASE MAINTENANCE FUNCTIONS
 
 # Function to Query MYSQL 'servers' Database
-def check_database( server, serverip, countrycode, reason, sender, log_reject_to_db ):
+def check_database( server, serverip, countrycode, reason, sender, log_reject_to_db, log_reject_to_file ):
 	retval = False
 	time_now = datetime.datetime.now()
 	# Do we want to store to the database?
@@ -458,7 +460,7 @@ dbhost="localhost"
 dbpassword="password"
 config_path="/etc/postfix-policyd-geoip/"
 log_reject_to_file=False
-external_reject_file="/var/tmp/policd-geoip2.log"
+external_reject_file="/tmp/policyd-geoip2.log"
 test=""
 
 # Now Read through the config array and assign values
@@ -481,8 +483,7 @@ for i in range( len( config ) ):
 		try:
 			path_to_data = codes
 		except:
-			if passed == "-D":
-				syslog.syslog( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
+			syslog.syslog( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
 			print ( 'ERROR reading path_to_data in policyd-geoip.conf, trying default' )
 			path_to_data = "/usr/share/GeoIP/GeoLite2-Country.mmdb"
 			pass
@@ -592,7 +593,7 @@ for i in range( len( config ) ):
 		except:
 			syslog.syslog( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
 			print ( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
-			external_reject_file = "/var/tmp/policyd-geoip2.log"
+			external_reject_file = "/var/log/policyd-geoip2.log"
 			pass
 	elif value[0][0:16] == "LOG_REJECT_TO_DB":
 		codes = value[1].strip('\n')
@@ -806,7 +807,7 @@ while 1:
 					syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
 			elif (result == "GOODEXCEPT"):
 				saved_reject_code = reject_code
-				if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db ):
+				if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db, log_reject_to_file ):
 					reject_code = "554"
 				if test_mode:
 					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
@@ -817,7 +818,7 @@ while 1:
 				reject_code = saved_reject_code
 			elif (result in rejectlist):
 				saved_reject_code = reject_code
-				if check_database( revlookup, IP, saved_result, "REJECTLIST", sender_address, log_reject_to_db ):
+				if check_database( revlookup, IP, saved_result, "REJECTLIST", sender_address, log_reject_to_db, log_reject_to_file ):
 					reject_code = "554"
 				if test_mode:
 					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
@@ -836,7 +837,7 @@ while 1:
 			else:
 				if( permit_acceptlist_only ):
 					saved_reject_code = reject_code
-					if check_database( revlookup, IP, saved_result, "ACCEPTLIST_ONLY NOT LISTED", sender_address, log_reject_to_db ):
+					if check_database( revlookup, IP, saved_result, "ACCEPTLIST_ONLY NOT LISTED", sender_address, log_reject_to_db, log_reject_to_file ):
 						reject_code = "554"
 					if test_mode:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
@@ -872,3 +873,4 @@ while 1:
 	data[key] = value
 
 # END PROGRAM
+
