@@ -369,7 +369,7 @@ def dat_query(data, instance_dict, path_to_data):
 		try:
 			retval=gi.country_code_by_addr(IP)
 			return(( retval, instance_dict ))
-		except Exception, cause:
+		except Exception as cause:
 			syslog.syslog( 'ERROR checking for Country Code. Reported problem : %s' % (str(cause)) )
 			pass
 
