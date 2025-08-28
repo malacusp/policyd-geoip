@@ -14,6 +14,10 @@ Postfix Policy for filtering emails/servers by GeoIP
 You will need the maxminddb python module, install instructions if not in your package manager; https://pypi.org/project/maxminddb/<br>
 Using the available data from https://www.maxmind.com/en/home<br>
 On Debian, Ubuntu and derivatives you may use (sudo apt install python3-maxminddb) the module may be listed as just "python-maxminddb" depending on distribution or your package manager.<br>
+OR you can use the old style .dat file available using the Python-Geoip module (sudo apt install python3-geoip). This will require some code changes to policyd-geoip2 file in /usr/bin.
+The changes are to the import operations at the top of the file, uncomment the GeoIP import and comment out the maxminddb import.
+Uncomment the "gi = GeoIP.open...." line and comment out the "reader = maxminddb.open_database....." line.
+Uncomment the "result, instance_dict = dat_query(data, instance_dict, path_to_data)" and comment out the "result, instance_dict = query(data, instance_dict, path_to_data)".
 Place the policyd-geoip2 file into /usr/bin directory.<br>
 Change owner/group to root (chown root:root /usr/bin/policyd-geoip2).<br>
 Give it execute permissions (chmod 755 /usr/bin/policyd-geoip2).<br>
