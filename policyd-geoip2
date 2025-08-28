@@ -39,12 +39,10 @@ import pymysql as MySQLdb
 valid_fields = "id,name,ip,total,first,last,code,reason,sender"
 def listservers( fields ):
 	try:
-		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
 		cursor = db.cursor()
 		cursor.execute("SELECT * FROM `servers`")
 		records = cursor.fetchall()
 		cursor.close()
-		db.close()
 		fields_to_print = ""
 		if "ALL" in fields:
 			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
@@ -76,17 +74,18 @@ def listservers( fields ):
 				print ( eval( fields_to_print.rstrip(',') ) )
 		else:
 			print ( "INVALID FIELD NAME. Valid fields are %s" % (valid_fields) )
+		db.close()
 
 	except Exception as exc :
 		print ('ERROR Listing the database. %s' % (exc))
 		pass
+		db.close()
 		sys.exit()
 	return
 
 def clearservers( server="ALL", no_ask=False ):
 	retval = False
 	try:
-		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
 		cursor = db.cursor()
 
 		if server == "ALL":
@@ -139,7 +138,6 @@ def clearservers( server="ALL", no_ask=False ):
 def deleteserver( server="0", no_ask=False ):
 	retval = False
 	try:
-		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
 		cursor = db.cursor()
 
 		if server != "0":
@@ -182,7 +180,6 @@ def clearoldentries(time_before="24H", no_ask=False):
 		if factor == None:
 			return
 		clear_before = time_now - factor
-		db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
 		cursor = db.cursor()
 		cursor.execute("SELECT * FROM `servers`")
 		records = cursor.fetchall()
@@ -219,7 +216,6 @@ def clearoldentries(time_before="24H", no_ask=False):
 		else:
 			print ("NO RECORDS to Clear")
 		cursor.close()
-		db.close()
 	except Exception as exc :
 		print ('ERROR Clearing the database. %s' % (exc))
 		pass
@@ -251,7 +247,6 @@ def check_database( server, serverip, countrycode, reason, sender, log_reject_to
 	# Do we want to store to the database?
 	if log_reject_to_db:
 		try:
-			db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
 			cursor = db.cursor()
 			sql = "SELECT * FROM `servers` WHERE `serverip` = '%s'" % (serverip)
 			num_rows = cursor.execute( sql )
@@ -277,11 +272,9 @@ def check_database( server, serverip, countrycode, reason, sender, log_reject_to
 				if passed == "-D":
 					syslog.syslog( 'Adding database entry for : %s | IP : %s' % (server, serverip) )
 			cursor.close()
-			db.close()
 		except Exception as exc :
 			syslog.syslog('ERROR Accessing the database. %s' % (exc))
 			print ('ERROR Accessing the database. %s' % (exc))
-			db.close()
 			pass
 	# Do we want to store to external file?
 	if log_reject_to_file:
@@ -638,6 +631,10 @@ for i in range( len( config ) ):
 		codes = codes.strip('\r')
 		dbpassword = quote(codes)
 
+# Open our database if required
+if log_reject_to_db:
+	db = MySQLdb.connect( db=dbname, user=dbuser, host=dbhost, passwd=dbpassword )
+
 # CHECK COMMAND LINE SWITCHES AND OPTIONS
 if len(sys.argv) >= 2:
 	passed = sys.argv[1]
@@ -760,124 +757,130 @@ instance_dict = {'0':'init',}
 instance_dict.clear()
 data = {}
 lineRx = re.compile(r'^\s*([^=\s]+)\s*=(.*)$')
-while 1:
-	# Python readline assumes ascii here, but sometimes it's not
-	lineraw = sys.stdin.buffer.readline()
-	line = lineraw.decode('UTF-8',errors='replace')
-	if not line: break
-	#line = string.rstrip(line)
-	line = line.rstrip()
-	if passed == "-D" :
-		syslog.syslog('Read line: "%s"' % line)
-	if not line :
-		try:
-			# Perform Check of IP
-			result, instance_dict = query(data, instance_dict, path_to_data)
-			if passed == "-D" :
-				syslog.syslog('RESULT : "%s"' % result)
-			# Save country_code for later use.
-			saved_result = result
-			IP = data.get('client_address')
-			sender_address = data.get('sender')
-			recipient_address = data.get('recipient')
-			revlookup = data.get('reverse_client_name')
-			syslog.syslog( 'E-Mail Sender: %s to Recipient: %s' % (sender_address, recipient_address) )
-			if passed == "-D":
-				syslog.syslog( 'Postfix Reverse Lookup of %s returned %s' % (IP, revlookup) )
-			# Check for Exceptions
-			result = check_good_exceptions(data, result, good_exceptions, IP, revlookup)
-			result = check_bad_exceptions(data, result, bad_exceptions, IP, revlookup)
-			result = check_sender_bypasses(data, result, sender_bypasses, sender_address )
-			result = check_recipient_bypasses(data, result, recipient_bypasses, recipient_address )
-			if passed == "-D":
-				syslog.syslog( 'Result of Checks: %s' % (result) )
-			# Check result - "action=dunno" is used instead of "action=ok" as this lets other checks happen.
-			if (result == "SENDERBYPASS"):
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in SENDER_BYPASSES %s' % (sender_address, PGO_message) )
-				else:
-					sys.stdout.write( 'action=dunno No Processing <%s> in SENDER_BYPASSES\n\n' % (sender_address) )
-					syslog.syslog( 'action=Pass - No Processing <%s> in SENDER_BYPASSES ' % (sender_address) )
-			elif (result == "RECIPIENTBYPASS"):
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in RECIPIENT_BYPASSES %s' % (recipient_address,PGO_message) )
-				else:
-					sys.stdout.write( 'action=dunno No Processing <%s> in RECIPIENT_BYPASSES\n\n' % (recipient_address) )
-					syslog.syslog( 'action=Pass - No Processing <%s> in RECIPIENT_BYPASSES ' % (recipient_address) )
-			elif (result == "BADEXCEPT"):
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s %s' % (IP,revlookup,saved_result,PGO_message) )
-				else:
-					sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
-					syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
-			elif (result == "GOODEXCEPT"):
-				saved_reject_code = reject_code
-				if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db, log_reject_to_file ):
-					reject_code = "554"
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
-				else:
-					sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
-					syslog.syslog( 'action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
-				reject_code = saved_reject_code
-			elif (result in rejectlist):
-				saved_reject_code = reject_code
-				if check_database( revlookup, IP, saved_result, "REJECTLIST", sender_address, log_reject_to_db, log_reject_to_file ):
-					reject_code = "554"
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
-				else:
-					sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s\n\n' % (reject_code,IP,revlookup,saved_result) )
-					syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s ' % (reject_code,IP,revlookup,saved_result) )
-				reject_code = saved_reject_code
-			elif (result in acceptlist):
-				if test_mode:
-					sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-					syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s %s' % (IP,revlookup,result,PGO_message) )
-				else:
-					sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s\n\n' % (IP,revlookup,saved_result) )
-					syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s ' % (IP,revlookup,saved_result) )
-			else:
-				if( permit_acceptlist_only ):
+try:
+	while 1:
+		# Python readline assumes ascii here, but sometimes it's not
+		lineraw = sys.stdin.buffer.readline()
+		line = lineraw.decode('UTF-8',errors='replace')
+		if not line: break
+		#line = string.rstrip(line)
+		line = line.rstrip()
+		if passed == "-D" :
+			syslog.syslog('Read line: "%s"' % line)
+		if not line :
+			try:
+				# Perform Check of IP
+				result, instance_dict = query(data, instance_dict, path_to_data)
+				if passed == "-D" :
+					syslog.syslog('RESULT : "%s"' % result)
+				# Save country_code for later use.
+				saved_result = result
+				IP = data.get('client_address')
+				sender_address = data.get('sender')
+				recipient_address = data.get('recipient')
+				revlookup = data.get('reverse_client_name')
+				syslog.syslog( 'E-Mail Sender: %s to Recipient: %s' % (sender_address, recipient_address) )
+				if passed == "-D":
+					syslog.syslog( 'Postfix Reverse Lookup of %s returned %s' % (IP, revlookup) )
+				# Check for Exceptions
+				result = check_good_exceptions(data, result, good_exceptions, IP, revlookup)
+				result = check_bad_exceptions(data, result, bad_exceptions, IP, revlookup)
+				result = check_sender_bypasses(data, result, sender_bypasses, sender_address )
+				result = check_recipient_bypasses(data, result, recipient_bypasses, recipient_address )
+				if passed == "-D":
+					syslog.syslog( 'Result of Checks: %s' % (result) )
+				# Check result - "action=dunno" is used instead of "action=ok" as this lets other checks happen.
+				if (result == "SENDERBYPASS"):
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in SENDER_BYPASSES %s' % (sender_address, PGO_message) )
+					else:
+						sys.stdout.write( 'action=dunno No Processing <%s> in SENDER_BYPASSES\n\n' % (sender_address) )
+						syslog.syslog( 'action=Pass - No Processing <%s> in SENDER_BYPASSES ' % (sender_address) )
+				elif (result == "RECIPIENTBYPASS"):
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - No Processing <%s> in RECIPIENT_BYPASSES %s' % (recipient_address,PGO_message) )
+					else:
+						sys.stdout.write( 'action=dunno No Processing <%s> in RECIPIENT_BYPASSES\n\n' % (recipient_address) )
+						syslog.syslog( 'action=Pass - No Processing <%s> in RECIPIENT_BYPASSES ' % (recipient_address) )
+				elif (result == "BADEXCEPT"):
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s %s' % (IP,revlookup,saved_result,PGO_message) )
+					else:
+						sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
+						syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+				elif (result == "GOODEXCEPT"):
 					saved_reject_code = reject_code
-					if check_database( revlookup, IP, saved_result, "ACCEPTLIST_ONLY NOT LISTED", sender_address, log_reject_to_db, log_reject_to_file ):
+					if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db, log_reject_to_file ):
 						reject_code = "554"
 					if test_mode:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-						syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
+						syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
 					else:
-						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
-						syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
+						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+						syslog.syslog( 'action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
 					reject_code = saved_reject_code
-				else:
+				elif (result in rejectlist):
+					saved_reject_code = reject_code
+					if check_database( revlookup, IP, saved_result, "REJECTLIST", sender_address, log_reject_to_db, log_reject_to_file ):
+						reject_code = "554"
 					if test_mode:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
-						syslog.syslog( '[TEST_MODE active, result would be] action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+						syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
 					else:
-						sys.stdout.write( 'action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (IP,revlookup,saved_result) )
-						syslog.syslog( 'action=warn - Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
-		except Exception as exc:
-			sys.stdout.write( 'action=defer_if_permit An error occured, %s failed with error %s\n\n' % (IP,str(exc)) )
-			syslog.syslog( 'An Error Occured, %s failed with error %s' % (IP, str(exc)) )
-			pass
-		sys.stdout.flush()
-		data = {}
-		continue
+						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+						syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] in REJECTLIST as %s ' % (reject_code,IP,revlookup,saved_result) )
+					reject_code = saved_reject_code
+				elif (result in acceptlist):
+					if test_mode:
+						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s %s' % (IP,revlookup,result,PGO_message) )
+					else:
+						sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s\n\n' % (IP,revlookup,saved_result) )
+						syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in ACCEPTLIST as %s ' % (IP,revlookup,saved_result) )
+				else:
+					if( permit_acceptlist_only ):
+						saved_reject_code = reject_code
+						if check_database( revlookup, IP, saved_result, "ACCEPTLIST_ONLY NOT LISTED", sender_address, log_reject_to_db, log_reject_to_file ):
+							reject_code = "554"
+						if test_mode:
+							sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+							syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
+						else:
+							sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+							syslog.syslog( 'action=%s - Rejected Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
+						reject_code = saved_reject_code
+					else:
+						if test_mode:
+							sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
+							syslog.syslog( '[TEST_MODE active, result would be] action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+						else:
+							sys.stdout.write( 'action=warn Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s\n\n' % (IP,revlookup,saved_result) )
+							syslog.syslog( 'action=warn - Server [IP: %s / LOOKUP: %s] not in ACCEPTLIST or REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
+			except Exception as exc:
+				sys.stdout.write( 'action=defer_if_permit An error occured, %s failed with error %s\n\n' % (IP,str(exc)) )
+				syslog.syslog( 'An Error Occured, %s failed with error %s' % (IP, str(exc)) )
+				pass
+			sys.stdout.flush()
+			data = {}
+			continue
 
-	m = lineRx.match(line)
-	if not m: 
-		syslog.syslog( 'ERROR: Could not match line "%s"' % line )
-		continue
+		m = lineRx.match(line)
+		if not m: 
+			syslog.syslog( 'ERROR: Could not match line "%s"' % line )
+			continue
 
-	key = m.group(1)
-	value = m.group(2)
-	if key not in [ 'protocol_state', 'protocol_name', 'queue_id' ]:
-		value = value.lower()
-	data[key] = value
-
+		key = m.group(1)
+		value = m.group(2)
+		if key not in [ 'protocol_state', 'protocol_name', 'queue_id' ]:
+			value = value.lower()
+		data[key] = value
+except KeyboardInterrupt:
+	if log_reject_to_db and db.open:
+		db.close()
+	
+if log_reject_to_db and db.open:
+	db.close()
 # END PROGRAM
