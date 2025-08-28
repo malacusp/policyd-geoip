@@ -20,7 +20,7 @@ Give it execute permissions (chmod 755 /usr/bin/policyd-geoip2).<br>
 <br>
 Create Directory /etc/postfix-policyd-geoip <br>
 Change owner/group to root (chown root:root /etc/postfix-policyd-geoip).<br>
-Set this to execute for owner/group (chmod 755 /etc/postfix-policyd-geoip).<br>
+Set this to execute for owner/group/others (chmod 755 /etc/postfix-policyd-geoip).<br>
 
 Copy the following files into it:<br>
 accept_list.conf<br>
