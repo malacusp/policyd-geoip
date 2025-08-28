@@ -325,9 +325,8 @@ def query(data, instance_dict, path_to_data):
 		else:
 			last_action = found_instance[6]
 	else:
-		# This is the actual query. The "reader" and old method "gi" are defined later in the code.
+		# This is the actual query. The "reader" is defined later in the code.
 		try:
-			#retval=gi.country_code_by_addr(IP)
 			retval = reader.get(IP)
 			syslog.syslog( 'Country Code : %s' % retval['country']['iso_code'] )
 			#print(retval['country']['iso_code'])
