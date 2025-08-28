@@ -22,7 +22,8 @@
 __version__ = "2.10: Mon, 25 Aug 2025 12:00:00 +0000"
 
 import syslog, sys, os, string
-#import geoip2.database
+# Uncomment the line below to use old style .dat files and comment out the maxminddb line
+#import GeoIP
 import maxminddb
 import re
 from urllib.parse import quote
@@ -335,6 +336,42 @@ def query(data, instance_dict, path_to_data):
 			syslog.syslog( 'ERROR checking for Country Code. %s' % (exc) )
 			pass
 			sys.exit()
+
+	return(( 'None', instance_dict ))
+
+# Function to Query IP against GeoIP database not our database.
+def dat_query(data, instance_dict, path_to_data):
+	IP = data.get('client_address')
+	if IP == None:
+		syslog.syslog( 'geoip/query: No client address, exiting' )
+		return(( None, instance_dict ))
+	instance = data.get('instance')
+	# The following if is only needed for testing.
+	# Postfix will always provide instance.
+	if not instance:
+		import random
+		instance = str(int(random.random()*100000))
+	# This is to prevent multiple headers being prepended
+	# for multi-recipient mail.
+	if instance_dict.has_key(instance):
+		found_instance = instance_dict[instance]
+	else:
+		found_instance = []
+	# If this is not the first recipient for the message, we need to know if
+	# there is a previous prepend to make sure we don't prepend more than once.
+	if found_instance:
+		if found_instance[6] != 'prepend':
+			last_action = found_instance[3]
+		else:
+			last_action = found_instance[6]
+	else:
+		# This is the actual query "gi" is defined later in the code.
+		try:
+			retval=gi.country_code_by_addr(IP)
+			return(( retval, instance_dict ))
+		except Exception, cause:
+			syslog.syslog( 'ERROR checking for Country Code. Reported problem : %s' % (str(cause)) )
+			pass
 
 	return(( 'None', instance_dict ))
 
@@ -756,6 +793,7 @@ if passed == "-D":
 
 # Open the GeoIP database.
 try:
+	# uncomment the line below to use old style .dat files and comment out the "reader" line below that.
 	#gi = GeoIP.open(path_to_data, GeoIP.GEOIP_STANDARD)
 	reader = maxminddb.open_database(path_to_data)
 except Exception as exc :
@@ -780,6 +818,7 @@ try:
 		if not line :
 			try:
 				# Perform Check of IP
+				#result, instance_dict = dat_query(data, instance_dict, path_to_data)
 				result, instance_dict = query(data, instance_dict, path_to_data)
 				if passed == "-D" :
 					syslog.syslog('RESULT : "%s"' % result)
