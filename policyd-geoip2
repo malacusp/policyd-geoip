@@ -38,190 +38,200 @@ import pymysql as MySQLdb
 # START OF DATABASE MAINTENANCE FUNCTIONS
 valid_fields = "id,name,ip,total,first,last,code,reason,sender"
 def listservers( fields ):
-	try:
-		cursor = db.cursor()
-		cursor.execute("SELECT * FROM `servers`")
-		records = cursor.fetchall()
-		cursor.close()
-		fields_to_print = ""
-		if "ALL" in fields:
-			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
-		if "ID" in fields:
-			fields_to_print+=" record[0],"
-		if "NAME" in fields:
-			fields_to_print+=" record[1],"
-		if "IP" in fields:
-			fields_to_print+=" record[2],"
-		if "TOTAL" in fields:
-			fields_to_print+=" record[3],"
-		if "FIRST" in fields:
-			fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'),"
-		if "LAST" in fields:
-			fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'),"
-		if "CODE" in fields:
-			fields_to_print+=" record[6],"
-		if "REASON" in fields:
-			fields_to_print+=" record[7],"
-		if "SENDER" in fields:
-			fields_to_print+=" record[8],"
+	if log_reject_to_db:
+		try:
+			cursor = db.cursor()
+			cursor.execute("SELECT * FROM `servers`")
+			records = cursor.fetchall()
+			cursor.close()
+			fields_to_print = ""
+			if "ALL" in fields:
+				fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
+			if "ID" in fields:
+				fields_to_print+=" record[0],"
+			if "NAME" in fields:
+				fields_to_print+=" record[1],"
+			if "IP" in fields:
+				fields_to_print+=" record[2],"
+			if "TOTAL" in fields:
+				fields_to_print+=" record[3],"
+			if "FIRST" in fields:
+				fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'),"
+			if "LAST" in fields:
+				fields_to_print+=" datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'),"
+			if "CODE" in fields:
+				fields_to_print+=" record[6],"
+			if "REASON" in fields:
+				fields_to_print+=" record[7],"
+			if "SENDER" in fields:
+				fields_to_print+=" record[8],"
 
-		if len(records) > 0:
-			print ("GeoIP Policy Check Listing Records")
-		else:
-			print ("GeoIP Policy Check NO RECORDS to List")
-		if fields_to_print != "":
-			for record in records:
-				print ( eval( fields_to_print.rstrip(',') ) )
-		else:
-			print ( "INVALID FIELD NAME. Valid fields are %s" % (valid_fields) )
-		db.close()
+			if len(records) > 0:
+				print ("Listing Records")
+			else:
+				print ("NO RECORDS to List")
+			if fields_to_print != "":
+				for record in records:
+					print ( eval( fields_to_print.rstrip(',') ) )
+			else:
+				print ( "INVALID FIELD NAME. Valid fields are %s" % (valid_fields) )
+			db.close()
 
-	except Exception as exc :
-		print ('ERROR Listing the database. %s' % (exc))
-		pass
-		db.close()
-		sys.exit()
+		except Exception as exc :
+			print ('ERROR Listing the database. %s' % (exc))
+			pass
+			db.close()
+			sys.exit()
 	return
 
 def clearservers( server="ALL", no_ask=False ):
 	retval = False
-	try:
-		cursor = db.cursor()
+	if log_reject_to_db:
+		try:
+			cursor = db.cursor()
 
-		if server == "ALL":
-			print ("Clearing all entries in servers database")
-			if no_ask:
-				result = 'y'
-			else:
-				result = 'b'
-				while (result.lower() != 'y' and result.lower() != 'n'):
-					result=input("Are you sure ? [y/n] : ")
-			if result.lower() == 'y':
-				cursor.execute("TRUNCATE TABLE servers")
-				print ("Cleared")
-			else:
-				print ("Operation Cancelled")
-		else:
-			sql = "SELECT * FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
-			num_rows = cursor.execute( sql )
-			records = cursor.fetchall()
-			if num_rows > 0:
-				fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
-				print ("GeoIP Policy Check deleting the following records from database:")
-				for record in records:
-					print ( eval(fields_to_print) )
-				result = 'b'
-				while (result.lower() != 'y' and result.lower() != 'n'):
-					result=input("Are you sure ? [y/n] : ")
+			if server == "ALL":
+				sql = "SELECT * FROM `servers`"
+				num_rows = cursor.execute( sql )
+				if num_rows > 0:
+					print ("Clearing all entries in servers database")
+				else:
+					print ("Database already empty")
+					return
+				if no_ask:
+					result = 'y'
+				else:
+					result = 'b'
+					while (result.lower() != 'y' and result.lower() != 'n'):
+						result=input("Are you sure ? [y/n] : ")
 				if result.lower() == 'y':
-					sql = "DELETE FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
-					num_rows = cursor.execute( sql )
-					print ("Cleared %s" % num_rows)
+					cursor.execute("TRUNCATE TABLE servers")
+					print ("Cleared")
 				else:
 					print ("Operation Cancelled")
-
 			else:
-				print ("GeoIP Policy Check NO RECORDS found to Clear")
+				sql = "SELECT * FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
+				num_rows = cursor.execute( sql )
+				records = cursor.fetchall()
+				if num_rows > 0:
+					fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
+					print ("Deleting the following records from database:")
+					for record in records:
+						print ( eval(fields_to_print) )
+					result = 'b'
+					while (result.lower() != 'y' and result.lower() != 'n'):
+						result=input("Are you sure ? [y/n] : ")
+					if result.lower() == 'y':
+						sql = "DELETE FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
+						num_rows = cursor.execute( sql )
+						if num_rows > 0:
+							print ("Cleared %s" % num_rows)
+						else:
+							print ("NO RECORDS found to Clear")
+					else:
+						print ("Operation Cancelled")
 
-		cursor.close()
-		db.close()
+				else:
+					print ("NO RECORDS found to Clear")
 
-	except Exception as exc :
-		retval=False
-		print ('ERROR Clearing the database. %s' % (exc))
-		pass
-		db.close()
-		sys.exit()
+			cursor.close()
+			db.close()
 
+		except Exception as exc :
+			retval=False
+			print ('ERROR Clearing the database. %s' % (exc))
+			pass
+			db.close()
+			sys.exit()
 	return ( retval )
 
 def deleteserver( server="0", no_ask=False ):
 	retval = False
-	try:
-		cursor = db.cursor()
+	if log_reject_to_db:
+		try:
+			cursor = db.cursor()
 
-		if server != "0":
-			print ("Delete server from servers database. This is irreversible.")
-			if no_ask:
-				result = 'y'
-			else:
-				result = 'b'
-				while (result.lower() != 'y' and result.lower() != 'n'):
-					result=input("Are you sure ? [y/n] : ")
-			if result.lower() == 'y':
-				sql = "SELECT * from servers WHERE `serverid`=%s;" % (server)
-				cursor.execute( sql )
-				records = cursor.fetchall()
-				if len(records) > 0:
-					sql = "DELETE FROM `servers` WHERE `serverid`=%s;" % (server)
-					cursor.execute( sql )
-					print ("Deleted Entry %s" % server)
+			if server != "0":
+				print ("Delete server from servers database. This is irreversible.")
+				if no_ask:
+					result = 'y'
 				else:
-					print ("Not Deleted, serverid not found")
-			else:
-				print ("Operation Cancelled")
+					result = 'b'
+					while (result.lower() != 'y' and result.lower() != 'n'):
+						result=input("Are you sure ? [y/n] : ")
+				if result.lower() == 'y':
+					sql = "SELECT * from servers WHERE `serverid`=%s;" % (server)
+					cursor.execute( sql )
+					records = cursor.fetchall()
+					if len(records) > 0:
+						sql = "DELETE FROM `servers` WHERE `serverid`=%s;" % (server)
+						cursor.execute( sql )
+						print ("Deleted Entry %s" % server)
+					else:
+						print ("Not Deleted, serverid not found")
+				else:
+					print ("Operation Cancelled")
 
-		cursor.close()
-		db.close()
+			cursor.close()
+			db.close()
 
-	except Exception as exc :
-		retval=False
-		print ('ERROR Clearing the database. %s' % (exc))
-		pass
-		db.close()
-		sys.exit()
-
+		except Exception as exc :
+			retval=False
+			print ('ERROR Clearing the database. %s' % (exc))
+			pass
+			db.close()
+			sys.exit()
 	return ( retval )
 
 def clearoldentries(time_before="24H", no_ask=False):
-	try:
-		time_now = datetime.datetime.now() #fromtimestamp(time.time())
-		factor = parse_time( time_before )
-		if factor == None:
-			return
-		clear_before = time_now - factor
-		cursor = db.cursor()
-		cursor.execute("SELECT * FROM `servers`")
-		records = cursor.fetchall()
-		to_delete = ""
-		first = True
-		for record in records:
-			if ( datetime.datetime.fromtimestamp(int(float(record[5]))) ) < clear_before:
-				# Build the SQL delete string if it is the first one in the list don't add the ' OR '.
-				if first:
-					to_delete += ( "`serverid` = '%s'" % str(record[0]) )
-					first = False
-				else:
-					to_delete += ( " OR `serverid` = '%s'" % str(record[0]) )
-		if len(to_delete) > 0:
-			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7],record[8]"
-			print ("GeoIP Policy Check deleting the following records from database:")
-			syslog.syslog ("GeoIP Policy Check deleting the following records from database:")
+	if log_reject_to_db:
+		try:
+			time_now = datetime.datetime.now() #fromtimestamp(time.time())
+			factor = parse_time( time_before )
+			if factor == None:
+				return
+			clear_before = time_now - factor
+			cursor = db.cursor()
+			cursor.execute("SELECT * FROM `servers`")
+			records = cursor.fetchall()
+			to_delete = ""
+			first = True
 			for record in records:
-				if str(record[0]) in to_delete:
-					print ( eval(fields_to_print) )
-			result = 'b'
-			if not no_ask:
-				while (result.lower() != 'y' and result.lower() != 'n'):
-					result=input("Are you sure ? [y/n] : ")
+				if ( datetime.datetime.fromtimestamp(int(float(record[5]))) ) < clear_before:
+					# Build the SQL delete string if it is the first one in the list don't add the ' OR '.
+					if first:
+						to_delete += ( "`serverid` = '%s'" % str(record[0]) )
+						first = False
+					else:
+						to_delete += ( " OR `serverid` = '%s'" % str(record[0]) )
+			if len(to_delete) > 0:
+				fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7],record[8]"
+				print ("Deleting the following records from database:")
+				syslog.syslog ("Deleting the following records from database:")
+				for record in records:
+					if str(record[0]) in to_delete:
+						print ( eval(fields_to_print) )
+				result = 'b'
+				if not no_ask:
+					while (result.lower() != 'y' and result.lower() != 'n'):
+						result=input("Are you sure ? [y/n] : ")
+				else:
+					result = 'y'
+				if result.lower() == 'y':
+					sql = "DELETE FROM `servers` WHERE %s" % (to_delete)
+					cursor.execute( sql )
+					print ("Cleared")
+					syslog.syslog("Cleared")
+				else:
+					print ("Operation Cancelled")
 			else:
-				result = 'y'
-			if result.lower() == 'y':
-				sql = "DELETE FROM `servers` WHERE %s" % (to_delete)
-				cursor.execute( sql )
-				print ("Cleared")
-				syslog.syslog("Cleared")
-			else:
-				print ("Operation Cancelled")
-		else:
-			print ("NO RECORDS to Clear")
-		cursor.close()
-	except Exception as exc :
-		print ('ERROR Clearing the database. %s' % (exc))
-		pass
-		db.close()
-		sys.exit()
-
+				print ("NO RECORDS to Clear")
+			cursor.close()
+		except Exception as exc :
+			print ('ERROR Clearing the database. %s' % (exc))
+			pass
+			db.close()
+			sys.exit()
 	return
 
 # For calculating days and times for parse_time() function
