@@ -44,6 +44,7 @@ def listservers( fields ):
 		cursor.execute("SELECT * FROM `servers`")
 		records = cursor.fetchall()
 		cursor.close()
+		db.close()
 		fields_to_print = ""
 		if "ALL" in fields:
 			fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
@@ -124,11 +125,13 @@ def clearservers( server="ALL", no_ask=False ):
 				print ("GeoIP Policy Check NO RECORDS found to Clear")
 
 		cursor.close()
+		db.close()
 
 	except Exception as exc :
 		retval=False
 		print ('ERROR Clearing the database. %s' % (exc))
 		pass
+		db.close()
 		sys.exit()
 
 	return ( retval )
@@ -161,11 +164,13 @@ def deleteserver( server="0", no_ask=False ):
 				print ("Operation Cancelled")
 
 		cursor.close()
+		db.close()
 
 	except Exception as exc :
 		retval=False
 		print ('ERROR Clearing the database. %s' % (exc))
 		pass
+		db.close()
 		sys.exit()
 
 	return ( retval )
@@ -214,9 +219,11 @@ def clearoldentries(time_before="24H", no_ask=False):
 		else:
 			print ("NO RECORDS to Clear")
 		cursor.close()
+		db.close()
 	except Exception as exc :
 		print ('ERROR Clearing the database. %s' % (exc))
 		pass
+		db.close()
 		sys.exit()
 
 	return
@@ -270,9 +277,11 @@ def check_database( server, serverip, countrycode, reason, sender, log_reject_to
 				if passed == "-D":
 					syslog.syslog( 'Adding database entry for : %s | IP : %s' % (server, serverip) )
 			cursor.close()
+			db.close()
 		except Exception as exc :
 			syslog.syslog('ERROR Accessing the database. %s' % (exc))
 			print ('ERROR Accessing the database. %s' % (exc))
+			db.close()
 			pass
 	# Do we want to store to external file?
 	if log_reject_to_file:
@@ -592,7 +601,7 @@ for i in range( len( config ) ):
 		except:
 			syslog.syslog( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
 			print ( 'ERROR reading external_reject_file value in policyd-geoip.conf, using default' )
-			external_reject_file = "/var/log/policyd-geoip2.log"
+			external_reject_file = "/tmp/policyd-geoip2.log"
 			pass
 	elif value[0][0:16] == "LOG_REJECT_TO_DB":
 		codes = value[1].strip('\n')
@@ -872,4 +881,3 @@ while 1:
 	data[key] = value
 
 # END PROGRAM
-
