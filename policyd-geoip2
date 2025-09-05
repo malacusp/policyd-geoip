@@ -352,7 +352,7 @@ def dat_query(data, instance_dict, path_to_data):
 		instance = str(int(random.random()*100000))
 	# This is to prevent multiple headers being prepended
 	# for multi-recipient mail.
-	if instance_dict.has_key(instance):
+	if instance in instance_dict:
 		found_instance = instance_dict[instance]
 	else:
 		found_instance = []
