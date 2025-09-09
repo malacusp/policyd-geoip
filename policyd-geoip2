@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
 #  Check GeoIP country_codes and provide recommended action back to Postfix.
@@ -7,7 +7,7 @@
 #  By Malac <malacusp@gmail.com>
 '''
     This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License version 3 as published 
+    it under the terms of the GNU General Public License version 3 as published
     by the Free Software Foundation.
 
     This program is distributed in the hope that it will be useful,
@@ -19,7 +19,7 @@
     with this program; if not, write to the Free Software Foundation, Inc.,
     51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.'''
 
-__version__ = "2.11: Mon, 25 Aug 2025 12:00:00 +0000"
+__version__ = "2.10: Mon, 25 Aug 2025 12:00:00 +0000"
 
 import syslog, sys, os, string
 # Uncomment the line below to use old style .dat files and comment out the maxminddb line
@@ -29,6 +29,9 @@ import re
 from urllib.parse import quote
 import time, datetime
 import pymysql as MySQLdb
+
+# Load Mail Log for output messages
+syslog.openlog(os.path.basename(sys.argv[0]), syslog.LOG_PID, syslog.LOG_MAIL)
 
 # Stuff for DB access and timestamps
 #    record[0]   |  record[1] | record[2] | record[3] |   record[4]   |  record[5]   |  record[6]   | record[7] | record[8] |
@@ -226,6 +229,7 @@ def clearoldentries(time_before="24H", no_ask=False):
 				else:
 					print ("Operation Cancelled")
 			else:
+				syslog.syslog ("NO RECORDS to Clear")
 				print ("NO RECORDS to Clear")
 			cursor.close()
 		except Exception as exc :
@@ -380,20 +384,20 @@ def check_bad_exceptions(data, saved_result, bad_exceptions, IP, revlookup):
 		syslog.syslog( 'exceptions_to_rejectlist: %s' % (bad_exceptions) )
 		syslog.syslog( 'IP: %s' % (IP) )
 		syslog.syslog( 'Reverse DNS Lookup: %s' % (revlookup) )
-	# If "GOODEXCEPT" or "SENDERBYPASS" or "RECIPIENTBYPASS" already then just return that
-	if (saved_result == "GOODEXCEPT" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
+	# If "ACCEPT_EXCEPTION" or "SENDERBYPASS" or "RECIPIENTBYPASS" already then just return that
+	if (saved_result == "ACCEPT_EXCEPTION" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
 		return ( saved_result )
 	# Check each entry in bad_exceptions against the IP then the revlookup
 	for server in bad_exceptions:
 		if (server in IP) and (server != ''):
-			return ( "BADEXCEPT" )
+			return ( "REJECT_EXCEPTION" )
 		if (server in revlookup.upper()) and (server != ''):
-			return ( "BADEXCEPT" )
+			return ( "REJECT_EXCEPTION" )
 	# Check each entry in bad_exceptions against the sender email too
 	sender_address = data.get('sender')
 	for address in bad_exceptions:
 		if (address in sender_address.upper()) and (server != ''):
-			return ( "BADEXCEPT" )
+			return ( "REJECT_EXCEPTION" )
 	return ( saved_result )
 
 # Function to check for exceptions to the ACCEPTLIST so they can be rejected even if their country is acceptable
@@ -402,20 +406,20 @@ def check_good_exceptions(data, saved_result, good_exceptions, IP, revlookup):
 		syslog.syslog( 'exceptions_to_acceptlist: %s' % (good_exceptions) )
 		syslog.syslog( 'IP: %s' % (IP) )
 		syslog.syslog( 'Reverse DNS Lookup: %s' % (revlookup) )
-	# If "BADEXCEPT" or "GOODEXCEPT" or "SENDERBYPASS" already then just return that
-	if (saved_result == "BADEXCEPT" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
+	# If "REJECT_EXCEPTION" or "ACCEPT_EXCEPTION" or "SENDERBYPASS" already then just return that
+	if (saved_result == "REJECT_EXCEPTION" or saved_result == "SENDERBYPASS" or saved_result == "RECIPIENTBYPASS"):
 		return ( saved_result )
 	# Check each entry in good_exceptions against the IP then the revlookup
 	for server in good_exceptions:
 		if (server in IP) and (server != ''):
-			return ( "GOODEXCEPT" )
+			return ( "ACCEPT_EXCEPTION" )
 		if (server in revlookup.upper()) and (server != ''):
-			return ( "GOODEXCEPT" )
+			return ( "ACCEPT_EXCEPTION" )
 	# Check each entry in good_exceptions against the sender email too
 	sender_address = data.get('sender')
 	for address in good_exceptions:
 		if (address in sender_address.upper()) and (server != ''):
-			return ( "GOODEXCEPT" )
+			return ( "ACCEPT_EXCEPTION" )
 	return ( saved_result )
 
 # Function to check for sender_bypasses so checking is bypassed
@@ -423,9 +427,6 @@ def check_sender_bypasses(data, saved_result, sender_bypasses, sender_address):
 	if passed == "-D":
 		syslog.syslog( 'sender_bypasses: %s' % (sender_bypasses) )
 		syslog.syslog( 'Sender Address: %s' % (sender_address) )
-	# If "BADEXCEPT" or "GOODEXCEPT" or "RECIPIENTBYPASS" already then just return that
-	if (saved_result == "BADEXCEPT" or saved_result == "GOODEXCEPT" or saved_result == "RECIPIENTBYPASS"):
-		return ( saved_result )
 	# Check each entry in sender_bypasses against the IP then the revlookup
 	for address in sender_bypasses:
 		if (address in sender_address.upper()) and (address != ''):
@@ -437,9 +438,6 @@ def check_recipient_bypasses(data, saved_result, recipient_bypasses, recipient_a
 	if passed == "-D":
 		syslog.syslog( 'recipient_bypasses: %s' % (recipient_bypasses) )
 		syslog.syslog( 'Recipient Address: %s' % (recipient_address) )
-	# If "BADEXCEPT" or "GOODEXCEPT" or "SENDERBYPASS" already then just return that
-	if (saved_result == "BADEXCEPT" or saved_result == "GOODEXCEPT" or saved_result == "SENDERBYPASS"):
-		return ( saved_result )
 	# Check each entry in sender_bypasses against the IP then the revlookup
 	for address in recipient_bypasses:
 		if (address in recipient_address.upper()) and (address != ''):
@@ -455,7 +453,7 @@ def unsplit_config_file_lines( filename ):
 		cf = cf_file.readlines()
 		cf_file.close()
 		for line in cf:
-			value = whitespace.sub('', line)
+			value = ( whitespace.sub('', line) ).rstrip(',')
 			value = value.upper()
 			ret_lines.append(value)
 		ret_string =  ",".join(ret_lines)
@@ -767,8 +765,6 @@ if len(sys.argv) >= 2:
 		# LEAVE PROGRAM AFTER OPERATION
 		sys.exit()
 
-# Load Mail Log for output messages
-syslog.openlog(os.path.basename(sys.argv[0]), syslog.LOG_PID, syslog.LOG_MAIL)
 syslog.syslog( 'Running GeoIP Policy Check %s' % (debugmode) )
 
 if (auto_clear_db):
@@ -852,16 +848,16 @@ try:
 					else:
 						sys.stdout.write( 'action=dunno No Processing <%s> in RECIPIENT_BYPASSES\n\n' % (recipient_address) )
 						syslog.syslog( 'action=Pass - No Processing <%s> in RECIPIENT_BYPASSES ' % (recipient_address) )
-				elif (result == "BADEXCEPT"):
+				elif (result == "REJECT_EXCEPTION"):
 					if test_mode:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
 						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s %s' % (IP,revlookup,saved_result,PGO_message) )
 					else:
 						sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
 						syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
-				elif (result == "GOODEXCEPT"):
+				elif (result == "ACCEPT_EXCEPTION"):
 					saved_reject_code = reject_code
-					if check_database( revlookup, IP, saved_result, "GOODEXCEPT", sender_address, log_reject_to_db, log_reject_to_file ):
+					if check_database( revlookup, IP, saved_result, "ACCEPT_EXCEPTION", sender_address, log_reject_to_db, log_reject_to_file ):
 						reject_code = "554"
 					if test_mode:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
@@ -916,7 +912,7 @@ try:
 			continue
 
 		m = lineRx.match(line)
-		if not m: 
+		if not m:
 			syslog.syslog( 'ERROR: Could not match line "%s"' % line )
 			continue
 
@@ -928,7 +924,7 @@ try:
 except KeyboardInterrupt:
 	if log_reject_to_db and db.open:
 		db.close()
-	
+
 if log_reject_to_db and db.open:
 	db.close()
 # END PROGRAM
