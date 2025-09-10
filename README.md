@@ -17,12 +17,14 @@ E.G. you could either add email (or partial), "@example.com" to sender_bypasses 
  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.<br>
  You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.<br>
 
-[Installation]<br>
-You will need the maxminddb python module, install instructions if not in your package manager; https://pypi.org/project/maxminddb/<br>
+<b>[Installation]</b><br>
+You will need either the maxminddb or geoip python module.<br>
+<b>MaxMindDB</b><br>
+Install instructions if not in your package manager; https://pypi.org/project/maxminddb/<br>
 Using the available data from https://www.maxmind.com/en/home<br>
 On Debian, Ubuntu and derivatives you may use (sudo apt install python3-maxminddb) the module may be listed as just "python-maxminddb" depending on distribution or your package manager.<br>
-OR :<br>
-You can use the old style .dat file, available using the Python-Geoip module (sudo apt install python3-geoip). This will require some code changes to policyd-geoip2 file in /usr/bin.<br>
+<b>GeoIP</b><br>
+You can use the .dat style file, available using the Python-Geoip module (sudo apt install python3-geoip). This will require some code changes to policyd-geoip2 file in /usr/bin.<br>
 The changes are to the import operations at the top of the file, uncomment the GeoIP import and comment out the maxminddb import.<br>
 Uncomment the "gi = GeoIP.open...." line and comment out the "reader = maxminddb.open_database....." line.<br>
 Uncomment the "result, instance_dict = dat_query(data, instance_dict, path_to_data)" and comment out the "result, instance_dict = query(data, instance_dict, path_to_data)".<br>
