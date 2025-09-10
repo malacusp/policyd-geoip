@@ -5,8 +5,8 @@ Whilst this can help with Spam it should not be considered a spam filter, better
 However if you don't want even to consider any mail from a country or several countries at all then Policyd-GeoIP can help remove some of the chaff.<br>
 Be aware that some services like outlook.com bounce emails around the globe before delivering.<br>
 For example an email sent from a UK email address via Outlook may get presented for delivery by a server based in France or Sweden, etc.<br>
-These email addresses (or partials) will need to be added as sender_bypasses or the server (or partial) added to rejectlist_exceptions if you wish to receive these emails.<br>
-E.G. you could either add email (or partial), "@example.com" to sender_bypasses or the partial server address "protection.outlook.com" to rejectlist_exceptions (minus the quotes).<br> 
+These email addresses (or partials) will need to be added as sender_bypasses or the server (or partial) added to reject_list_exceptions if you wish to receive these emails.<br>
+E.G. you could either add email (or partial), "@example.com" to sender_bypasses or the partial server address "protection.outlook.com" to reject_list_exceptions (minus the quotes).<br> 
 <br>
  Install instructions for policyd-geoip2 Postfix policy to filter by country code.<br>
  By Malac inspired by and utilising some code from policyd-spf filter program.<br>
@@ -35,16 +35,19 @@ Change owner/group to root (chown root:root /etc/postfix-policyd-geoip).<br>
 Set this to execute for owner/group/others (chmod 755 /etc/postfix-policyd-geoip).<br>
 
 Copy the following files into it:<br>
+<b>REQUIRED FILES</b><br>
+policyd-geoip2.conf<br>
+<b>OPTIONAL DEPENDING ON WHETHER USING SEPARATE FILE BASED OPTIONS</b><br>
 accept_list.conf<br>
 accept_list_exceptions.conf<br>
-COPYING (this file if you wish)<br>
-policyd-geoip2.conf<br>
-policyd-geoip2.sql<br>
-README.md (this file if you wish)<br>
 recipient_bypasses.conf<br>
 reject_list.conf<br>
 reject_list_exceptions.conf<br>
 sender_bypasses.conf<br>
+<b>NOT REQUIRED</b><br>
+policyd-geoip2.sql (helpful if using database logging)<br>
+COPYING (If you wish)<br>
+README.md (If you wish)<br>
 
 Set owner/group to root on all files. (chown root:root /etc/postfix-policyd-geoip/*).<br>
 Set permissions on all files. (chmod 644 /etc/postfix-policyd-geoip/*).<br>
