@@ -853,7 +853,7 @@ try:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
 						syslog.syslog( '[TEST_MODE active, result would be] action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s %s' % (IP,revlookup,saved_result,PGO_message) )
 					else:
-						sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
+						sys.stdout.write( 'action=dunno Accepted Server [IP: %s / LOOKUP: %s] in REJECT_EXCEPTIONS returns :- %s\n\n' % (IP,revlookup,saved_result) )
 						syslog.syslog( 'action=Pass - Accepted Server [IP: %s / LOOKUP: %s] in EXCEPTIONS_TO_REJECTLIST returns :- %s ' % (IP,revlookup,saved_result) )
 				elif (result == "ACCEPT_EXCEPTION"):
 					saved_reject_code = reject_code
@@ -863,7 +863,7 @@ try:
 						sys.stdout.write( 'action=dunno TEST_MODE\n\n' )
 						syslog.syslog( '[TEST_MODE active, result would be] action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s %s' % (reject_code,IP,revlookup,saved_result,PGO_message) )
 					else:
-						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in EXCEPTIONS returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
+						sys.stdout.write( 'action=%s Rejected Server [IP: %s / LOOKUP: %s] in ACCEPT_EXCEPTIONS returns :- %s\n\n' % (reject_code,IP,revlookup,saved_result) )
 						syslog.syslog( 'action=%s - Rejected Server [IP:%s / LOOKUP:%s] in EXCEPTIONS_TO_ACCEPTLIST returns :- %s ' % (reject_code,IP,revlookup,saved_result) )
 					reject_code = saved_reject_code
 				elif (result in rejectlist):
