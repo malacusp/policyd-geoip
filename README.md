@@ -1,21 +1,21 @@
 # policyd-geoip
 Postfix Policy for filtering emails/servers by GeoIP<br>
-Helps filter traffic based on the reported geoip of the presenting server.
-Whilst this can help with Spam it should not be considered a spam filter, better options for that are available.
-However if you don't want even to consider any mail from a country or several countries at all then Policyd-GeoIP can help remove some of the chaff.
-Be aware that some services like outlook.com bounce emails around the globe before delivering.
-For example an email sent from a UK email address via Outlook may get presented for delivery by a server based in France or Sweden, etc.
-These email addresses (or partials) will need to be added as sender_bypasses or the server (or partial) added to rejectlist_exceptions if you wish to receive these emails.
-E.G. you could either add email (or partial), "@example.com" to sender_bypasses or the partial server address "protection.outlook.com" to rejectlist_exceptions (minus the quotes). 
-
- Install instructions for policyd-geoip2 Postfix policy to filter by country code.
- By Malac inspired by and utilising some code from policyd-spf filter program.
+Helps filter traffic based on the reported geoip of the presenting server.<br>
+Whilst this can help with Spam it should not be considered a spam filter, better options for that are available.<br>
+However if you don't want even to consider any mail from a country or several countries at all then Policyd-GeoIP can help remove some of the chaff.<br>
+Be aware that some services like outlook.com bounce emails around the globe before delivering.<br>
+For example an email sent from a UK email address via Outlook may get presented for delivery by a server based in France or Sweden, etc.<br>
+These email addresses (or partials) will need to be added as sender_bypasses or the server (or partial) added to rejectlist_exceptions if you wish to receive these emails.<br>
+E.G. you could either add email (or partial), "@example.com" to sender_bypasses or the partial server address "protection.outlook.com" to rejectlist_exceptions (minus the quotes).<br> 
+<br>
+ Install instructions for policyd-geoip2 Postfix policy to filter by country code.<br>
+ By Malac inspired by and utilising some code from policyd-spf filter program.<br>
  
- This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License
- as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
- This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
- You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+ This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License<br>
+ as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.<br>
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;<br>
+ without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.<br>
+ You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.<br>
 
 [Installation]<br>
 You will need the maxminddb python module, install instructions if not in your package manager; https://pypi.org/project/maxminddb/<br>
