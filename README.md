@@ -1,5 +1,5 @@
 # policyd-geoip
-Postfix Policy for filtering emails/servers by GeoIP
+Postfix Policy for filtering emails/servers by GeoIP<br>
 Helps filter traffic based on the reported geoip of the presenting server.
 Whilst this can help with Spam it should not be considered a spam filter, better options for that are available.
 However if you don't want even to consider any mail from a country or several countries at all then Policyd-GeoIP can help remove some of the chaff.
