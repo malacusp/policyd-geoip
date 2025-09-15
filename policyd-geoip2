@@ -45,7 +45,7 @@ def listservers( fields ):
 	if log_reject_to_db:
 		try:
 			cursor = db.cursor()
-			cursor.execute("SELECT * FROM `servers`")
+			cursor.execute("SELECT * FROM `servers` ORDER BY `serverid`")
 			records = cursor.fetchall()
 			cursor.close()
 			fields_to_print = ""
@@ -693,7 +693,7 @@ if len(sys.argv) >= 2:
 		print ("\nUSAGE:\tpolicyd-geoip2 [switch] [option]\n")
 		print ("SWITCHES:\t\tOPTIONS:")
 		print ("[command line only]")
-		print ("-l, --list, list\tid,name,ip,total,first,last,code,reason,sender (comma-separated list of fields required, NO SPACES)")
+		print ("-l, --list, list\tid,name,ip,total,first,last,code,reason,sender (comma-separated list of fields to display, NO SPACES)")
 		print ("-c, --clear, clear\tip address or server name or reason (can all be partial)")
 		print ("-o, --old, old\t\tA number plus d for days, h for hours, m for minutes, s for seconds.(e.g. 24h or 2d or 5m or 4d12h10m30s, etc.)")
 		print ("-r, --remove, remove\tserverid to remove from database (required) check with \"policyd-geoip2 -l\" switch (number is first column)")
