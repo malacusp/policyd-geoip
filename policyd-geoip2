@@ -119,13 +119,13 @@ def clearservers( server="ALL", no_ask=False ):
 				records = cursor.fetchall()
 				if num_rows > 0:
 					fields_to_print = "record[0], record[1], record[2], record[3], datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[4]))),'%d/%m/%Y - %T'), datetime.datetime.strftime(datetime.datetime.fromtimestamp(int(float(record[5]))),'%d/%m/%Y - %T'), record[6], record[7], record[8]"
-					print ("Deleting the following records from database:")
 					for record in records:
 						print ( eval(fields_to_print) )
 					result = 'b'
 					while (result.lower() != 'y' and result.lower() != 'n'):
 						result=input("Are you sure ? [y/n] : ")
 					if result.lower() == 'y':
+						print ("Deleting the following records from database:")
 						sql = "DELETE FROM `servers` WHERE `servername` LIKE '%%%s%%' OR `serverip` LIKE '%%%s%%' OR `country_code` LIKE '%%%s%%' OR `reason` LIKE '%%%s%%' OR `sender` LIKE '%%%s%%'" % (server,server,server,server,server)
 						num_rows = cursor.execute( sql )
 						if num_rows > 0:
