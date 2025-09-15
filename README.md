@@ -71,11 +71,11 @@ Set log_reject_to_db to "true" (no quotes) in /etc/postfix-policy-geoip/policyd-
 Add the following to the bottom of /etc/postfix/master.cf (you may add -d after /usr/bin/policyd-geoip2 to display debug messages), you can skip the # comments if you wish.<br>
 \# ==========================================================================<br>
 \# service type  private unpriv  chroot  wakeup  maxproc command + args      <br>
-\#               (yes)   (yes)   (yes)   (never)  (100)                       <br>
+\#               (yes)   (yes)   (yes)   (never)  (100)                      <br>
 \# ==========================================================================<br>
 \# Added for geoip policy:                                                   <br>
-policy-geoip unix    -       n       n       -       0     spawn           <br>
-[_________]user=nobody argv=/usr/bin/policyd-geoip2                           <br>
+policy-geoip unix    -       n       n       -       0     spawn             <br>
+[_________]user=nobody argv=/usr/bin/policyd-geoip2                          <br>
 <br>
 N.B. DO NOT INCLUDE the "[________]" this represents 8 spaces before the line.<br>
 <br>
