@@ -215,6 +215,7 @@ def clearoldentries(time_before="24H", no_ask=False):
 				for record in records:
 					if str(record[0]) in to_delete:
 						print ( eval(fields_to_print) )
+						syslog.syslog ( eval(fields_to_print) )
 				result = 'b'
 				if not no_ask:
 					while (result.lower() != 'y' and result.lower() != 'n'):
